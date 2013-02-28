@@ -130,13 +130,6 @@ public class CalendarSyncAdapterService extends Service {
                         if (logging) {
                             Log.d(TAG, "Upload sync requested for " + account.name);
                         }
-                        String syncKey = mailboxCursor.getString(ID_SYNC_KEY_SYNC_KEY);
-                        if ((syncKey == null) || (syncKey.equals("0"))) {
-                            if (logging) {
-                                Log.d(TAG, "Can't sync; mailbox in initial state");
-                            }
-                            return;
-                        }
                         // Ask for a sync from our sync manager
                         ExchangeService.serviceRequest(mailboxCursor.getLong(
                                 ID_SYNC_KEY_MAILBOX_ID), ExchangeService.SYNC_UPSYNC);
