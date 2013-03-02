@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:android="http://schemas.android.com/apk/res/android" xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <string name="policy_app_blacklist" >Desautorizar aplicativos especificados</string>
+    <string name="app_name" >Trocar serviços</string>
+    <string name="exception_updated" >Os detalhes deste evento foram alterados para: <xliff:g id="DATE">%s</xliff:g></string>
+    <string name="exception_cancel" >Este evento foi cancelado para: <xliff:g id="DATE">%s</xliff:g></string>
+    <string name="meeting_accepted" >Aceito: <xliff:g id="SUBJECT">%s</xliff:g></string>
+    <string name="exchange_name" >Corporativo</string>
+    <string name="policy_require_sd_encryption" >Exigir criptografia do cartão SD</string>
+    <string name="policy_dont_allow_html" >Não permitir e-mail em HTML</string>
+    <string name="policy_dont_allow_browser" >Não permitir navegadores</string>
+    <string name="account_setup_options_mail_window_auto" >Automático</string>
+    <string name="meeting_tentative" >Tentativa: <xliff:g id="SUBJECT">%s</xliff:g></string>
+    <string name="meeting_canceled" >Cancelado: <xliff:g id="SUBJECT">%s</xliff:g></string>
+    <string name="account_setup_options_mail_window_3days" >Três dias</string>
+    <string name="meeting_updated" >Atualizado: <xliff:g id="SUBJECT">%s</xliff:g></string>
+    <string name="policy_html_truncation" >Restringir tamanho do e-mail em HTML</string>
+    <string name="account_setup_options_mail_window_2weeks" >Duas semanas</string>
+    <string name="exchange_name_alternate" >Microsoft Exchange ActiveSync</string>
+    <string name="policy_require_smime" >Exigir mensagens em SMIME</string>
+    <string name="policy_dont_allow_consumer_email" >Não permitir e-mail do consumidor</string>
+    <string name="meeting_declined" >Recusado: <xliff:g id="SUBJECT">%s</xliff:g></string>
+    <string name="policy_dont_allow_pop_imap" >Não permitir contas POP3 ou IMAP</string>
+    <string name="meeting_allday_recurring" >Quando: <xliff:g id="EVENTDATE">%s</xliff:g> (o dia todo, recorrente)</string>
+    <string name="policy_dont_allow_irda" >Não permitir comunicações via infravermelho</string>
+    <string name="policy_app_whitelist" >Permitir somente aplicativos especificados</string>
+    <string name="policy_require_manual_sync_roaming" >Permitir sincronismo manual somente em roaming</string>
+    <string name="account_setup_options_mail_window_1day" >Um dia</string>
+    <string name="policy_text_truncation" >Restringir o tamanho do e-mail em texto</string>
+    <string name="meeting_when" >Quando:<xliff:g id="WHEN">%s</xliff:g></string>
+    <string name="policy_dont_allow_attachments" >Não permitir anexos</string>
+    <string name="meeting_recurring" >Quando: <xliff:g id="EVENTDATE">%s</xliff:g> (recorrente)</string>
+    <string name="policy_max_attachment_size" >Restringir tamanho do anexo</string>
+    <string name="policy_dont_allow_internet_sharing" >Não permitir compartilhamento pela Internet</string>
+    <string name="notification_exchange_calendar_added" >Agenda do Exchange adicionada</string>
+    <string name="policy_dont_allow_wifi" >Não permitir Wi-FI</string>
+    <string name="policy_bluetooth_restricted" >Restringir o uso de Bluetooth</string>
+    <string name="policy_dont_allow_unsigned_installers" >Não permitir instalações de aplicativos  não assinados</string>
+    <string name="meeting_allday" >Quando: <xliff:g id="EVENTDATE">%s</xliff:g> (o dia todo)</string>
+    <string name="policy_require_encryption" >Exigir criptografia do dispositivo</string>
+    <string name="account_setup_options_mail_window_1week" >Uma semana</string>
+    <string name="policy_dont_allow_text_messaging" >Não permitir mensagens de texto</string>
+    <string name="meeting_where" >Onde: <xliff:g id="WHERE">%s</xliff:g></string>
+    <string name="policy_dont_allow_unsigned_apps" >Não permitir aplicativos não assinados</string>
+    <string name="account_setup_options_mail_window_1month" >Um mês</string>
+    <string name="policy_dont_allow_storage_cards" >Não permitir cartões de armazenamento</string>
+    <string name="account_setup_options_mail_window_all" >Todos</string>
+</resources>
