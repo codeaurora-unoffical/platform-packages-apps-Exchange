@@ -25,6 +25,9 @@ LOCAL_SRC_FILES := $(call all-java-files-under, src)
 LOCAL_STATIC_JAVA_LIBRARIES := android-common com.android.emailcommon
 LOCAL_STATIC_JAVA_LIBRARIES += calendar-common
 
+# add for the new feature
+LOCAL_JAVA_LIBRARIES := com.qrd.plugin.feature_query
+
 LOCAL_PACKAGE_NAME := Exchange2
 LOCAL_OVERRIDES_PACKAGES := Exchange
 
