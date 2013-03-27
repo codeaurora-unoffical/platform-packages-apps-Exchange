@@ -468,12 +468,23 @@ public class CalendarSyncAdapter extends AbstractSyncAdapter {
                                     .withSelection(ATTENDEES_EXCEPT_ORGANIZER, mBindArgument)));
                             eventId = id;
                         } else {
+                            /**
+                             * FIXME:
+                             * I couldn't understand why need delete the original event and recreate it
+                             * even if we get the change command. We could only update the values of the
+                             * the details for this change. So we changed the behavior.
+                             */
+                            /*
                             // Otherwise, delete the original event and recreate it
                             userLog("Changing (delete/add) event ", serverId);
                             deleteOffset = ops.newDelete(id, serverId);
                             // Add a placeholder event so that associated tables can reference
                             // this as a back reference.  We add the event at the end of the method
                             eventOffset = ops.newEvent(PLACEHOLDER_OPERATION);
+                            */
+                            userLog("Changing update event ", serverId);
+                            eventOffset = ops.updateEvent(PLACEHOLDER_OPERATION);
+                            eventId = id;
                         }
                     } else {
                         // The changed item isn't found. We'll treat this as a new item
@@ -714,9 +725,17 @@ public class CalendarSyncAdapter extends AbstractSyncAdapter {
                 }
 
                 if (isValidEventValues(cv)) {
-                    ops.set(eventOffset,
-                            new Operation(ContentProviderOperation
-                                    .newInsert(mAsSyncAdapterEvents).withValues(cv)));
+                    // We use the update function to deal with the change command for update.
+                    if (!update || eventId < 0) {
+                        ops.set(eventOffset,
+                                new Operation(ContentProviderOperation
+                                        .newInsert(mAsSyncAdapterEvents).withValues(cv)));
+                    } else {
+                        ops.set(eventOffset,
+                                new Operation(ContentProviderOperation
+                                        .newUpdate(ContentUris.withAppendedId(mAsSyncAdapterEvents, eventId))
+                                        .withValues(cv)));
+                    }
                 } else {
                     // If we can't add this event (it's invalid), remove all of the inserts
                     // we've built for it
@@ -1365,6 +1384,12 @@ public class CalendarSyncAdapter extends AbstractSyncAdapter {
         }
 
         public int newEvent(Operation op) {
+            mEventStart = mCount;
+            add(op);
+            return mEventStart;
+        }
+
+        public int updateEvent(Operation op) {
             mEventStart = mCount;
             add(op);
             return mEventStart;
