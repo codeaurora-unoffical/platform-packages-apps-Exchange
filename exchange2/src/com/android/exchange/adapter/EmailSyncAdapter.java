@@ -66,6 +66,7 @@ import com.android.exchange.MessageMoveRequest;
 import com.android.exchange.R;
 import com.android.exchange.utility.CalendarUtilities;
 import com.google.common.annotations.VisibleForTesting;
+import com.qrd.plugin.feature_query.FeatureQuery;
 
 import org.apache.http.HttpStatus;
 import org.apache.http.entity.ByteArrayEntity;
@@ -112,6 +113,9 @@ public class EmailSyncAdapter extends AbstractSyncAdapter {
     private static final String EMAIL_WINDOW_SIZE = "5";
 
     private static final int MAX_NUM_FETCH_SIZE_REDUCTIONS = 5;
+	
+	private static final String ENTIRE_EMAIL_SYNC_SIZE = String.valueOf(Utility.ENTIRE_MAIL);    // add for feature: Sync size per mail
+
 
     @VisibleForTesting
     static final int LAST_VERB_REPLY = 1;
@@ -254,7 +258,14 @@ public class EmailSyncAdapter extends AbstractSyncAdapter {
                 s.start(Tags.BASE_BODY_PREFERENCE);
                 // HTML for email
                 s.data(Tags.BASE_TYPE, Eas.BODY_PREFERENCE_HTML);
-                s.data(Tags.BASE_TRUNCATION_SIZE, Eas.EAS12_TRUNCATION_SIZE);
+                if (FeatureQuery.FEATURE_EMAIL_SET_SYNCSIZE) {
+                    String sizeTruncation = Integer.toString(mAccount.mSyncSize);
+                    if (!ENTIRE_EMAIL_SYNC_SIZE.equals(sizeTruncation)) {
+                        s.data(Tags.BASE_TRUNCATION_SIZE, sizeTruncation);
+                    }
+                } else {
+                    s.data(Tags.BASE_TRUNCATION_SIZE, Eas.EAS12_TRUNCATION_SIZE);
+                }
                 s.end();
             } else {
                 // Use MIME data for EAS 2.5
@@ -776,6 +787,14 @@ public class EmailSyncAdapter extends AbstractSyncAdapter {
                         break;
                     case Tags.BASE_DATA:
                         body = getValue();
+                        break;
+                    case Tags.BASE_TRUNCATED:
+                        boolean truncated = getValue().equals("1") ? true : false;
+                        if (truncated) {
+                            if (FeatureQuery.FEATURE_EMAIL_SET_SYNCSIZE) {
+                                msg.mFlagLoaded = Message.FLAG_LOADED_SYNC_SIZE_COMPLETE;
+                            }
+                        }
                         break;
                     default:
                         skipTag();
