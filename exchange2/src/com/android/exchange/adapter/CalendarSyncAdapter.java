@@ -714,9 +714,18 @@ public class CalendarSyncAdapter extends AbstractSyncAdapter {
                 }
 
                 if (isValidEventValues(cv)) {
-                    ops.set(eventOffset,
-                            new Operation(ContentProviderOperation
-                                    .newInsert(mAsSyncAdapterEvents).withValues(cv)));
+                    // We use the update function to deal with the change command for update.
+                    if (!update || eventId < 0) {
+                        ops.set(eventOffset,
+                                new Operation(ContentProviderOperation
+                                        .newInsert(mAsSyncAdapterEvents).withValues(cv)));
+                    } else {
+                        ops.set(eventOffset,
+                                new Operation(ContentProviderOperation
+                                        .newUpdate(ContentUris
+                                                .withAppendedId(mAsSyncAdapterEvents, eventId))
+                                                        .withValues(cv)));
+                    }
                 } else {
                     // If we can't add this event (it's invalid), remove all of the inserts
                     // we've built for it
