@@ -2141,12 +2141,16 @@ public class ExchangeService extends Service implements Runnable {
                 stopServiceThreads();
 
                 // Stop receivers
-                if (mConnectivityReceiver != null) {
-                    unregisterReceiver(mConnectivityReceiver);
-                }
-                if (mBackgroundDataSettingReceiver != null) {
-                    unregisterReceiver(mBackgroundDataSettingReceiver);
-                }
+                try{
+                    if (mConnectivityReceiver != null) {
+                        unregisterReceiver(mConnectivityReceiver);
+                    }
+                    if (mBackgroundDataSettingReceiver != null) {
+                        unregisterReceiver(mBackgroundDataSettingReceiver);
+                    }
+                }catch (Exception e) {
+                    Log.e(TAG, "unregisterReceiver Exception in ExchangeService", e);
+				}
 
                 // Unregister observers
                 ContentResolver resolver = getContentResolver();
