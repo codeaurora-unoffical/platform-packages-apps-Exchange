@@ -1,5 +1,7 @@
 /*
  * Copyright (C) 2008-2009 Marc Blank
+ * Copyright (c) 2013, The Linux Foundation. All Rights Reserved.
+ *
  * Licensed to The Android Open Source Project.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -541,12 +543,8 @@ public class CalendarSyncAdapter extends AbstractSyncAdapter {
                         endTime = Utility.parseDateTimeToMillis(getValue());
                         break;
                     case Tags.CALENDAR_EXCEPTIONS:
-                        // For exceptions to show the organizer, the organizer must be added before
-                        // we call exceptionsParser
-                        addOrganizerToAttendees(ops, eventId, organizerName, organizerEmail);
-                        organizerAdded = true;
                         exceptionsParser(ops, cv, attendeeValues, reminderMins, busyStatus,
-                                startTime, endTime);
+                                startTime, endTime, organizerName, organizerEmail);
                         break;
                     case Tags.CALENDAR_LOCATION:
                         cv.put(Events.EVENT_LOCATION, getValue());
@@ -658,6 +656,13 @@ public class CalendarSyncAdapter extends AbstractSyncAdapter {
                 cv.put(Events.HAS_ATTENDEE_DATA, "0");
                 mService.userLog("Maximum number of attendees exceeded; redacting");
             } else if (numAttendees > 0) {
+                if (eventId > 0) {
+                    // Caused by we used the update function to deal with the change command.
+                    // We need to delete all the attendee belongs to this event, and insert
+                    // as a new attendee.
+                    deleteAttendeesByEventId(eventId);
+                }
+
                 StringBuilder sb = new StringBuilder();
                 for (ContentValues attendee: attendeeValues) {
                     String attendeeEmail = attendee.getAsString(Attendees.ATTENDEE_EMAIL);
@@ -702,6 +707,7 @@ public class CalendarSyncAdapter extends AbstractSyncAdapter {
                     if (eventId < 0) {
                         ops.newAttendee(attendee);
                     } else {
+                        // This update action will be insert with the eventId.
                         ops.updatedAttendee(attendee, eventId);
                     }
                 }
@@ -854,7 +860,7 @@ public class CalendarSyncAdapter extends AbstractSyncAdapter {
 
         private void exceptionParser(CalendarOperations ops, ContentValues parentCv,
                 ArrayList<ContentValues> attendeeValues, int reminderMins, int busyStatus,
-                long startTime, long endTime) throws IOException {
+                long startTime, long endTime, String organizerName, String organizerEmail) throws IOException {
             ContentValues cv = new ContentValues();
             cv.put(Events.CALENDAR_ID, mCalendarId);
 
@@ -874,6 +880,8 @@ public class CalendarSyncAdapter extends AbstractSyncAdapter {
             cv.put(Events.HAS_ATTENDEE_DATA, 0);
 
             int allDayEvent = 0;
+            long eventId = -1;
+            ArrayList<ContentValues> exceptionAttendeeValues = null;
 
             // This column is the key that links the exception to the serverId
             cv.put(Events.ORIGINAL_SYNC_ID, parentCv.getAsString(Events._SYNC_ID));
@@ -883,6 +891,27 @@ public class CalendarSyncAdapter extends AbstractSyncAdapter {
                 switch (tag) {
                     case Tags.CALENDAR_ATTACHMENTS:
                         attachmentsParser();
+                        break;
+                    case Tags.CALENDAR_ATTENDEES:
+                        // The exceptionStartTime will be format as YYYY-MM-DDTHH:MM:SS.MSSZ.
+                        // And the T serves as a separator. For one recurrence pattern, it's
+                        // minimum is daily. So we could think if this exceptionStartTime has
+                        // the same date, it is the same exception.
+                        String exceptionDate[] = exceptionStartTime.split("T");
+                        String serverIdSpecDate = parentCv.getAsString(Events._SYNC_ID) + '_' +
+                                exceptionDate[0] + "%";
+                        Cursor c = getServerIdCursorByExceptionsDate(serverIdSpecDate);
+                        try {
+                            if (c != null && c.moveToFirst()) {
+                                eventId = c.getLong(0);
+                            }
+                        } finally {
+                            if (c != null) c.close();
+                        }
+
+                        // If found this tag, it means the attendee changed.
+                        exceptionAttendeeValues = new ArrayList<ContentValues>();
+                        exceptionAttendeeValues = attendeesParser(ops, eventId);
                         break;
                     case Tags.CALENDAR_EXCEPTION_START_TIME:
                         exceptionStartTime = getValue();
@@ -943,8 +972,9 @@ public class CalendarSyncAdapter extends AbstractSyncAdapter {
             }
 
             // We need a _sync_id, but it can't be the parent's id, so we generate one
-            cv.put(Events._SYNC_ID, parentCv.getAsString(Events._SYNC_ID) + '_' +
-                    exceptionStartTime);
+            String serverId = parentCv.getAsString(Events._SYNC_ID) + '_' +
+                    exceptionStartTime;
+            cv.put(Events._SYNC_ID, serverId);
 
             // Enforce CalendarProvider required properties
             setTimeRelatedValues(cv, startTime, endTime, allDayEvent);
@@ -954,11 +984,43 @@ public class CalendarSyncAdapter extends AbstractSyncAdapter {
 
             // Add the exception insert
             int exceptionStart = ops.mCount;
-            ops.newException(cv);
+
+            // If this exception didn't contains the attendee tag, the value will be not change.
+            // Then we need try to find if it already saved in the database.
+            if (eventId < 0) {
+                String exceptionDate[] = exceptionStartTime.split("T");
+                String serverIdSpecDate = parentCv.getAsString(Events._SYNC_ID) + '_' +
+                        exceptionDate[0] + "%";
+                Cursor c = getServerIdCursorByExceptionsDate(serverIdSpecDate);
+                try {
+                    if (c != null && c.moveToFirst()) {
+                        eventId = c.getLong(0);
+                    }
+                } finally {
+                    if (c != null) c.close();
+                }
+            }
+
+            if (eventId < 0) {
+                ops.newException(cv);
+            } else {
+                ops.updatedException(cv, eventId);
+            }
+
+            // For exceptions to show the organizer, the organizer must be added.
+            addOrganizerToAttendees(ops, eventId, organizerName, organizerEmail);
+
             // Also add the attendees, because they need to be copied over from the parent event
             boolean attendeesRedacted = false;
-            if (attendeeValues != null) {
-                for (ContentValues attValues: attendeeValues) {
+            if (attendeeValues != null
+                    || exceptionAttendeeValues != null) {
+                // This exception already saved, we need delete the saved attendee first.
+                if (eventId > 0) {
+                    deleteAttendeesByEventId(eventId);
+                }
+
+                ArrayList<ContentValues> values = exceptionAttendeeValues != null ? exceptionAttendeeValues : attendeeValues;
+                for (ContentValues attValues: values) {
                     // If this is the user, use his busy status for attendee status
                     String attendeeEmail = attValues.getAsString(Attendees.ATTENDEE_EMAIL);
                     // Note that the exception at which we surpass the redaction limit might have
@@ -967,9 +1029,17 @@ public class CalendarSyncAdapter extends AbstractSyncAdapter {
                     if (mEmailAddress.equalsIgnoreCase(attendeeEmail)) {
                         attValues.put(Attendees.ATTENDEE_STATUS,
                                 CalendarUtilities.attendeeStatusFromBusyStatus(busyStatus));
-                        ops.newAttendee(attValues, exceptionStart);
+                        if (eventId < 0) {
+                            ops.newAttendee(attValues, exceptionStart);
+                        } else {
+                            ops.updatedAttendee(attValues, eventId);
+                        }
                     } else if (ops.size() < MAX_OPS_BEFORE_EXCEPTION_ATTENDEE_REDACTION) {
-                        ops.newAttendee(attValues, exceptionStart);
+                        if (eventId < 0) {
+                            ops.newAttendee(attValues, exceptionStart);
+                        } else {
+                            ops.updatedAttendee(attValues, eventId);
+                        }
                     } else {
                         attendeesRedacted = true;
                     }
@@ -1005,12 +1075,12 @@ public class CalendarSyncAdapter extends AbstractSyncAdapter {
 
         private void exceptionsParser(CalendarOperations ops, ContentValues cv,
                 ArrayList<ContentValues> attendeeValues, int reminderMins, int busyStatus,
-                long startTime, long endTime) throws IOException {
+                long startTime, long endTime, String organizerName, String organizerEmail) throws IOException {
             while (nextTag(Tags.CALENDAR_EXCEPTIONS) != END) {
                 switch (tag) {
                     case Tags.CALENDAR_EXCEPTION:
                         exceptionParser(ops, cv, attendeeValues, reminderMins, busyStatus,
-                                startTime, endTime);
+                                startTime, endTime, organizerName, organizerEmail);
                         break;
                     default:
                         skipTag();
@@ -1155,10 +1225,22 @@ public class CalendarSyncAdapter extends AbstractSyncAdapter {
                     new String[] {serverId, mCalendarIdString}, null);
         }
 
+        private Cursor getServerIdCursorByExceptionsDate(String serverId) {
+            String where = Events._SYNC_ID + " like '" + serverId + "' AND " + Events.CALENDAR_ID + "=" + mCalendarIdString;
+            return mContentResolver.query(mAccountUri, ID_PROJECTION, where, null, null);
+        }
+
         private Cursor getClientIdCursor(String clientId) {
             mBindArgument[0] = clientId;
             return mContentResolver.query(mAccountUri, ID_PROJECTION, CLIENT_ID_SELECTION,
                     mBindArgument, null);
+        }
+
+        private void deleteAttendeesByEventId(long eventId) {
+            mContentResolver.delete(mAsSyncAdapterAttendees, Attendees.EVENT_ID + "=?",
+                    new String[] {
+                        String.valueOf(eventId)
+                    });
         }
 
         public void deleteParser(CalendarOperations ops) throws IOException {
@@ -1420,6 +1502,12 @@ public class CalendarSyncAdapter extends AbstractSyncAdapter {
 
         public void newException(ContentValues cv) {
             add(new Operation(ContentProviderOperation.newInsert(mAsSyncAdapterEvents)
+                    .withValues(cv)));
+        }
+
+        public void updatedException(ContentValues cv, long eventId) {
+            add(new Operation(ContentProviderOperation.newUpdate(
+                    ContentUris.withAppendedId(mAsSyncAdapterEvents, eventId))
                     .withValues(cv)));
         }
 
