@@ -31,4 +31,7 @@ LOCAL_PACKAGE_NAME := Exchange2Tests
 
 LOCAL_INSTRUMENTATION_FOR := Exchange2
 
+#Disable building package
+ifndef REDUCED_APPS
 include $(BUILD_PACKAGE)
+endif
