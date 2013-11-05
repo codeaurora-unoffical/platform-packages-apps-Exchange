@@ -32,7 +32,10 @@ LOCAL_PROGUARD_FLAG_FILES := proguard.flags
 
 LOCAL_EMMA_COVERAGE_FILTER += +com.android.exchange.*
 
+#Disable building package
+ifndef REDUCED_APPS
 include $(BUILD_PACKAGE)
+endif
 
 # additionally, build unit tests in a separate .apk
  include $(call all-makefiles-under,$(LOCAL_PATH))
