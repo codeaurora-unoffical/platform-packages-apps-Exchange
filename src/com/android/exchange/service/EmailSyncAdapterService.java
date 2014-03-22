@@ -57,6 +57,7 @@ import com.android.emailcommon.utility.Utility;
 import com.android.exchange.Eas;
 import com.android.exchange.R.drawable;
 import com.android.exchange.R.string;
+import com.android.exchange.adapter.LoadMore;
 import com.android.exchange.adapter.PingParser;
 import com.android.exchange.adapter.Search;
 import com.android.exchange.eas.EasFolderSync;
@@ -68,6 +69,7 @@ import com.android.mail.providers.UIProvider;
 import com.android.mail.providers.UIProvider.AccountCapabilities;
 import com.android.mail.utils.LogUtils;
 
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.HashSet;
 
@@ -492,9 +494,16 @@ public class EmailSyncAdapterService extends AbstractSyncAdapterService {
         @Override
         public void stopSync(long mailboxId) {}
 
-        @Deprecated
         @Override
-        public void loadMore(long messageId) {}
+        public void loadMore(long messageId) {
+            LogUtils.d(TAG, "IEmailService.loadMore for message: %d", messageId);
+            try {
+                LoadMore.loadMoreForMessage(EmailSyncAdapterService.this, messageId);
+            } catch (IOException e) {
+                LogUtils.d(TAG, "IEmailService.loadMore for message %d error: %s", messageId,
+                        e.toString());
+            }
+        }
 
         @Deprecated
         @Override
