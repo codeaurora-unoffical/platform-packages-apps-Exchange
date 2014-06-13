@@ -226,6 +226,11 @@ public class EmailSyncAdapterService extends AbstractSyncAdapterService {
                 return;
             }
 
+            // Don't ping if we're on security hold.
+            if ((account.mFlags & Account.FLAGS_SECURITY_HOLD) != 0) {
+                return;
+            }
+
             // Don't ping for accounts that haven't performed initial sync.
             if (EmailContent.isInitialSyncKey(account.mSyncKey)) {
                 return;
@@ -776,6 +781,31 @@ public class EmailSyncAdapterService extends AbstractSyncAdapterService {
 
                         if (operationResult < 0) {
                             break;
+                      }
+                   }
+                } else if (!accountOnly && !pushOnly) {
+                    // We have to sync multiple folders.
+                    final Cursor c;
+                    if (isFullSync) {
+                        // Full account sync includes all mailboxes that participate in system sync.
+                        c = Mailbox.getMailboxIdsForSync(cr, account.mId);
+                    } else {
+                        // Type-filtered sync should only get the mailboxes of a specific type.
+                        c = Mailbox.getMailboxIdsForSyncByType(cr, account.mId, mailboxType);
+                    }
+                    if (c != null) {
+                        try {
+                            final HashSet<String> authsToSync = getAuthsToSync(acct);
+                            while (c.moveToNext()) {
+                                operationResult = syncMailbox(context, cr, acct, account,
+                                        c.getLong(0), extras, syncResult, authsToSync, false);
+                                if (operationResult < 0) {
+                                    break;
+                                }
+                            }
+                        } finally {
+                            c.close();
+
                         }
                     }
                 }
