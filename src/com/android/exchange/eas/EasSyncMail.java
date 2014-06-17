@@ -1,10 +1,7 @@
-package com.android.exchange.service;
+package com.android.exchange.eas;
 
-import android.content.ContentResolver;
 import android.content.Context;
-import android.content.SyncResult;
 import android.database.Cursor;
-import android.os.Bundle;
 
 import com.android.emailcommon.TrafficFlags;
 import com.android.emailcommon.provider.Account;
@@ -25,9 +22,10 @@ import java.io.InputStream;
 import java.util.ArrayList;
 
 /**
- * Performs an Exchange mailbox sync for "normal" mailboxes.
+ * Subclass to handle sync details for mail collections.
  */
-public class EasMailboxSyncHandler extends EasSyncHandler {
+public class EasSyncMail extends EasSyncCollectionTypeBase {
+
     /**
      * The projection used for building the fetch request list.
      */
@@ -39,94 +37,34 @@ public class EasMailboxSyncHandler extends EasSyncHandler {
     private static final String ENTIRE_EMAIL_SYNC_SIZE =
             String.valueOf(SyncSize.SYNC_SIZE_ENTIRE_MAIL);
 
-    /**
-     * List of server ids for messages to fetch from the server.
-     */
-    private final ArrayList<String> mMessagesToFetch = new ArrayList<String>();
-
-    public EasMailboxSyncHandler(final Context context, final ContentResolver contentResolver,
-            final Account account, final Mailbox mailbox, final Bundle syncExtras,
-            final SyncResult syncResult) {
-        super(context, contentResolver, account, mailbox, syncExtras, syncResult);
-    }
-
-    private String getEmailFilter() {
-        final int syncLookback = mMailbox.mSyncLookback == SyncWindow.SYNC_WINDOW_ACCOUNT
-                ? mAccount.mSyncLookback : mMailbox.mSyncLookback;
-        switch (syncLookback) {
-            case SyncWindow.SYNC_WINDOW_1_DAY:
-                return Eas.FILTER_1_DAY;
-            case SyncWindow.SYNC_WINDOW_3_DAYS:
-                return Eas.FILTER_3_DAYS;
-            case SyncWindow.SYNC_WINDOW_1_WEEK:
-                return Eas.FILTER_1_WEEK;
-            case SyncWindow.SYNC_WINDOW_2_WEEKS:
-                return Eas.FILTER_2_WEEKS;
-            case SyncWindow.SYNC_WINDOW_1_MONTH:
-                return Eas.FILTER_1_MONTH;
-            case SyncWindow.SYNC_WINDOW_ALL:
-                return Eas.FILTER_ALL;
-            default:
-                // Auto window is deprecated and will also use the default.
-                return Eas.FILTER_1_WEEK;
-        }
-    }
-
-    /**
-     * Find partially loaded messages and add their server ids to {@link #mMessagesToFetch}.
-     */
-    private void addToFetchRequestList() {
-        final Cursor c = mContentResolver.query(Message.CONTENT_URI, FETCH_REQUEST_PROJECTION,
-                MessageColumns.FLAG_LOADED + "=" + Message.FLAG_LOADED_PARTIAL + " AND " +
-                MessageColumns.MAILBOX_KEY + "=?", new String[] {Long.toString(mMailbox.mId)},
-                null);
-        if (c != null) {
-            try {
-                while (c.moveToNext()) {
-                    mMessagesToFetch.add(c.getString(FETCH_REQUEST_SERVER_ID));
-                }
-            } finally {
-                c.close();
-            }
-        }
-    }
-
     @Override
-    protected int getTrafficFlag() {
+    public int getTrafficFlag() {
         return TrafficFlags.DATA_EMAIL;
     }
 
     @Override
-    protected String getFolderClassName() {
-        return "Email";
-    }
+    public void setSyncOptions(final Context context, final Serializer s,
+            final double protocolVersion, final Account account, final Mailbox mailbox,
+            final boolean isInitialSync, final int numWindows) throws IOException {
+        if (isInitialSync) {
+            // No special options to set for initial mailbox sync.
+            return;
+        }
 
-    @Override
-    protected AbstractSyncParser getParser(final InputStream is) throws IOException {
-        return new EmailSyncParser(mContext, mContentResolver, is, mMailbox, mAccount);
-    }
-
-    @Override
-    protected void setInitialSyncOptions(final Serializer s) {
-        // No-op.
-    }
-
-    @Override
-    protected void setNonInitialSyncOptions(final Serializer s, int numWindows) throws IOException {
         // Check for messages that aren't fully loaded.
-        addToFetchRequestList();
+        final ArrayList<String> messagesToFetch = addToFetchRequestList(context, mailbox);
         // The "empty" case is typical; we send a request for changes, and also specify a sync
         // window, body preference type (HTML for EAS 12.0 and later; MIME for EAS 2.5), and
         // truncation
         // If there are fetch requests, we only want the fetches (i.e. no changes from the server)
         // so we turn MIME support off.  Note that we are always using EAS 2.5 if there are fetch
         // requests
-        if (mMessagesToFetch.isEmpty()) {
+        if (messagesToFetch.isEmpty()) {
             // Permanently delete if in trash mailbox
             // In Exchange 2003, deletes-as-moves tag = true; no tag = false
             // In Exchange 2007 and up, deletes-as-moves tag is "0" (false) or "1" (true)
-            final boolean isTrashMailbox = mMailbox.mType == Mailbox.TYPE_TRASH;
-            if (getProtocolVersion() < Eas.SUPPORTED_PROTOCOL_EX2007_DOUBLE) {
+            final boolean isTrashMailbox = mailbox.mType == Mailbox.TYPE_TRASH;
+            if (protocolVersion < Eas.SUPPORTED_PROTOCOL_EX2007_DOUBLE) {
                 if (!isTrashMailbox) {
                     s.tag(Tags.SYNC_DELETES_AS_MOVES);
                 }
@@ -143,14 +81,14 @@ public class EasMailboxSyncHandler extends EasSyncHandler {
                     String.valueOf(windowSize < MAX_WINDOW_SIZE ? windowSize : MAX_WINDOW_SIZE));
             s.start(Tags.SYNC_OPTIONS);
             // Set the lookback appropriately (EAS calls this a "filter")
-            s.data(Tags.SYNC_FILTER_TYPE, getEmailFilter());
+            s.data(Tags.SYNC_FILTER_TYPE, getEmailFilter(account, mailbox));
             // Set the truncation amount for all classes
-            if (getProtocolVersion() >= Eas.SUPPORTED_PROTOCOL_EX2007_DOUBLE) {
+            if (protocolVersion >= Eas.SUPPORTED_PROTOCOL_EX2007_DOUBLE) {
                 s.start(Tags.BASE_BODY_PREFERENCE);
                 // HTML for email
                 s.data(Tags.BASE_TYPE, Eas.BODY_PREFERENCE_HTML);
-                if (mAccount.isSetSyncSizeEnabled()) {
-                    String sizeTruncation = Integer.toString(mAccount.mSyncSize);
+                if (account.isSetSyncSizeEnabled()) {
+                    String sizeTruncation = Integer.toString(account.mSyncSize);
                     if (!ENTIRE_EMAIL_SYNC_SIZE.equals(sizeTruncation)) {
                         s.data(Tags.BASE_TRUNCATION_SIZE, sizeTruncation);
                     }
@@ -172,20 +110,12 @@ public class EasMailboxSyncHandler extends EasSyncHandler {
             s.data(Tags.SYNC_MIME_SUPPORT, Eas.MIME_BODY_PREFERENCE_TEXT);
             s.data(Tags.SYNC_TRUNCATION, Eas.EAS2_5_TRUNCATION_SIZE);
             s.end();
-        }
-    }
 
-    /**
-     * Add FETCH commands for messages that need a body (i.e. we didn't find it during our earlier
-     * sync; this happens only in EAS 2.5 where the body couldn't be found after parsing the
-     * message's MIME data).
-     * @param s The {@link Serializer} for this sync request.
-     * @throws IOException
-     */
-    private void addFetchCommands(final Serializer s) throws IOException {
-        if (!mMessagesToFetch.isEmpty()) {
+            // Add FETCH commands for messages that need a body (i.e. we didn't find it during our
+            // earlier sync; this happens only in EAS 2.5 where the body couldn't be found after
+            // parsing the message's MIME data).
             s.start(Tags.SYNC_COMMANDS);
-            for (final String serverId : mMessagesToFetch) {
+            for (final String serverId : messagesToFetch) {
                 s.start(Tags.SYNC_FETCH).data(Tags.SYNC_SERVER_ID, serverId).end();
             }
             s.end();
@@ -193,15 +123,60 @@ public class EasMailboxSyncHandler extends EasSyncHandler {
     }
 
     @Override
-    protected void setUpsyncCommands(final Serializer s) throws IOException {
-        addFetchCommands(s);
+    public AbstractSyncParser getParser(final Context context, final Account account,
+            final Mailbox mailbox, final InputStream is) throws IOException {
+        return new EmailSyncParser(context, is, mailbox, account);
     }
 
-    @Override
-    protected void cleanup(final int syncResult) {
-        if (syncResult == SYNC_RESULT_MORE_AVAILABLE) {
-            // Prepare our member variables for another sync request.
-            mMessagesToFetch.clear();
+    /**
+     * Query the provider for partially loaded messages.
+     * @return Server ids for partially loaded messages.
+     */
+    private ArrayList<String> addToFetchRequestList(final Context context, final Mailbox mailbox) {
+        final ArrayList<String> messagesToFetch = new ArrayList<String>();
+        final Cursor c = context.getContentResolver().query(Message.CONTENT_URI,
+                FETCH_REQUEST_PROJECTION,  MessageColumns.FLAG_LOADED + "=" +
+                Message.FLAG_LOADED_PARTIAL + " AND " +  MessageColumns.MAILBOX_KEY + "=?",
+                new String[] {Long.toString(mailbox.mId)}, null);
+        if (c != null) {
+            try {
+                while (c.moveToNext()) {
+                    messagesToFetch.add(c.getString(FETCH_REQUEST_SERVER_ID));
+                }
+            } finally {
+                c.close();
+            }
+        }
+        return messagesToFetch;
+    }
+
+    /**
+     * Get the sync window for this collection and translate it to EAS's value for that (EAS refers
+     * to this as the "filter").
+     * @param account The {@link Account} for this sync; its sync window is used if the mailbox
+     *                doesn't specify an override.
+     * @param mailbox The {@link Mailbox} for this sync.
+     * @return The EAS string value for the sync window specified for this mailbox.
+     */
+    private String getEmailFilter(final Account account, final Mailbox mailbox) {
+        final int syncLookback = mailbox.mSyncLookback == SyncWindow.SYNC_WINDOW_ACCOUNT
+                ? account.mSyncLookback : mailbox.mSyncLookback;
+        switch (syncLookback) {
+            case SyncWindow.SYNC_WINDOW_1_DAY:
+                return Eas.FILTER_1_DAY;
+            case SyncWindow.SYNC_WINDOW_3_DAYS:
+                return Eas.FILTER_3_DAYS;
+            case SyncWindow.SYNC_WINDOW_1_WEEK:
+                return Eas.FILTER_1_WEEK;
+            case SyncWindow.SYNC_WINDOW_2_WEEKS:
+                return Eas.FILTER_2_WEEKS;
+            case SyncWindow.SYNC_WINDOW_1_MONTH:
+                return Eas.FILTER_1_MONTH;
+            case SyncWindow.SYNC_WINDOW_ALL:
+                return Eas.FILTER_ALL;
+            default:
+                // Auto window is deprecated and will also use the default.
+                return Eas.FILTER_1_WEEK;
         }
     }
 }
