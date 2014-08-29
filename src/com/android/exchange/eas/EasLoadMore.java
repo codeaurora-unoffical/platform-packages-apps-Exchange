@@ -19,7 +19,7 @@
  * limitations under the License.
  */
 
-package com.android.exchange.adapter;
+package com.android.exchange.eas;
 
 import android.content.ContentResolver;
 import android.content.ContentUris;
@@ -34,7 +34,6 @@ import com.android.emailcommon.internet.MimeMessage;
 import com.android.emailcommon.internet.MimeUtility;
 import com.android.emailcommon.mail.MessagingException;
 import com.android.emailcommon.mail.Part;
-import com.android.emailcommon.provider.Account;
 import com.android.emailcommon.provider.Mailbox;
 import com.android.emailcommon.provider.ProviderUnavailableException;
 import com.android.emailcommon.provider.EmailContent.Body;
@@ -43,12 +42,16 @@ import com.android.emailcommon.provider.EmailContent.Message;
 import com.android.emailcommon.provider.EmailContent.MessageColumns;
 import com.android.emailcommon.provider.EmailContent.SyncColumns;
 import com.android.emailcommon.utility.ConversionUtilities;
+import com.android.exchange.CommandStatusException;
 import com.android.exchange.Eas;
 import com.android.exchange.EasAuthenticationException;
 import com.android.exchange.EasResponse;
-import com.android.exchange.EasSyncService;
+import com.android.exchange.adapter.Parser;
+import com.android.exchange.adapter.Serializer;
+import com.android.exchange.adapter.Tags;
 import com.android.mail.utils.LogUtils;
 
+import org.apache.http.HttpEntity;
 import org.apache.http.HttpStatus;
 import org.apache.http.entity.ByteArrayEntity;
 
@@ -57,7 +60,26 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 
-public class LoadMore {
+public class EasLoadMore extends EasOperation {
+    private static final String CMD = "ItemOperations";
+
+    private static final int RESULT_SUCCESS = 0;
+
+    private Message mMessage;
+
+    public EasLoadMore(Context context, long accountId, Message msg) {
+        super(context, accountId);
+        mMessage = msg;
+    }
+
+    @Override
+    protected String getCommand() {
+        if (mMessage == null) {
+            LogUtils.wtf(LOG_TAG, "Error, mMessage is null");
+            return null;
+        }
+        return CMD;
+    }
 
     /**
      * The FetchMessageRequest is basically our wrapper for the Fetch service call
@@ -78,27 +100,19 @@ public class LoadMore {
      *         </Options>
      *     </Fetch>
      * </ItemOperations>
-     *
-     * @param req the request (message id, sync size)
-     * @param protocolVersion the version of email account protocol
-     * @throws IOException
      */
-    public static void loadMoreForMessage(Context context, long messageId)
-            throws IOException {
-        // Retrieve the message; punt if either are null
-        Message msg = Message.restoreMessageWithId(context, messageId);
-        if (msg == null) {
-            LogUtils.e(Logging.LOG_TAG, "Retrive msg faild, mMessageId:" + messageId);
-            return;
+    @Override
+    protected HttpEntity getRequestEntity() throws IOException, MessageInvalidException {
+        if (mMessage == null) {
+            LogUtils.wtf(LOG_TAG, "Error, mMessage is null");
+            return null;
         }
 
-        Account account = Account.restoreAccountWithId(context, msg.mAccountKey);
-        final EasSyncService svc = EasSyncService.setupServiceForAccount(context, account);
-        final ContentResolver cr = context.getContentResolver();
+        final ContentResolver cr = mContext.getContentResolver();
 
         String serverId = "";
         long mailbox = -1;
-        Uri qreryUri = ContentUris.withAppendedId(Message.CONTENT_URI, msg.mId);
+        Uri qreryUri = ContentUris.withAppendedId(Message.CONTENT_URI, mMessage.mId);
         String[] projection = new String[] { SyncColumns.SERVER_ID, MessageColumns.MAILBOX_KEY };
         Cursor c = cr.query(qreryUri, projection, null, null, null);
         if (c == null) {
@@ -111,17 +125,17 @@ public class LoadMore {
             c.close();
             c = null;
         }
-        if (TextUtils.isEmpty(serverId) || mailbox < 0) return;
-        Mailbox box = Mailbox.restoreMailboxWithId(context, mailbox);
+        if (TextUtils.isEmpty(serverId) || mailbox < 0) return null;
+        Mailbox box = Mailbox.restoreMailboxWithId(mContext, mailbox);
 
         Serializer s = new Serializer();
 
         s.start(Tags.ITEMS_ITEMS).start(Tags.ITEMS_FETCH);
         s.data(Tags.ITEMS_STORE, "Mailbox");
         s.data(Tags.SYNC_COLLECTION_ID, box.mServerId);
-        s.data(Tags.SYNC_SERVER_ID, msg.mServerId);
+        s.data(Tags.SYNC_SERVER_ID, mMessage.mServerId);
         s.start(Tags.ITEMS_OPTIONS);
-        if (svc.mProtocolVersionDouble >= Eas.SUPPORTED_PROTOCOL_EX2007_DOUBLE) {
+        if (getProtocolVersion() >= Eas.SUPPORTED_PROTOCOL_EX2007_DOUBLE) {
             s.start(Tags.BASE_BODY_PREFERENCE);
             s.data(Tags.BASE_TYPE, Eas.BODY_PREFERENCE_HTML);
             s.end();
@@ -132,34 +146,38 @@ public class LoadMore {
             s.end();
         }
         s.end().end().end().done();
-        EasResponse resp = svc.sendHttpClientPost("ItemOperations",
-                new ByteArrayEntity(s.toByteArray()), EasSyncService.COMMAND_TIMEOUT);
-        try {
-            int status = resp.getStatus();
-            if (status == HttpStatus.SC_OK) {
-                if (!resp.isEmpty()) {
-                    InputStream is = resp.getInputStream();
-                    LoadMoreParser parser = new LoadMoreParser(is, msg);
-                    parser.parse();
-                    if (parser.getStatusCode() == LoadMoreParser.STATUS_CODE_SUCCESS) {
-                        parser.commit(context);
-                    }
-                }
-            } else {
-                LogUtils.e(Logging.LOG_TAG, "Fetch entire mail(messageId:" + msg.mId
-                        + ") response error: ", status);
-                if (resp.isAuthError()) {
-                    throw new EasAuthenticationException();
-                } else {
-                    throw new IOException();
-                }
-            }
-        } finally {
-            resp.close();
-        }
+
+        return new ByteArrayEntity(s.toByteArray());
     }
 
-    static class LoadMoreParser extends Parser {
+    @Override
+    protected int handleResponse(EasResponse response) throws IOException, CommandStatusException {
+        int status = response.getStatus();
+        if (status == HttpStatus.SC_OK) {
+            if (!response.isEmpty()) {
+                InputStream is = response.getInputStream();
+                LoadMoreParser parser = new LoadMoreParser(is, mMessage);
+                parser.parse();
+                if (parser.getStatusCode() == LoadMoreParser.STATUS_CODE_SUCCESS) {
+                    parser.commit(mContext);
+                }
+            } else {
+                return RESULT_NETWORK_PROBLEM;
+            }
+        } else {
+            LogUtils.e(Logging.LOG_TAG, "Fetch entire mail(messageId:" + mMessage.mId
+                    + ") response error: ", status);
+            if (response.isAuthError()) {
+                throw new EasAuthenticationException();
+            } else {
+                throw new IOException();
+            }
+        }
+
+        return RESULT_SUCCESS;
+    }
+
+    private class LoadMoreParser extends Parser {
         /**
          * Response:
          * <?xml version="1.0" encoding="utf-8"?>
@@ -179,7 +197,6 @@ public class LoadMore {
          * </ItemOperations>
          */
 
-        private Message mMessage;
         private int mStatusCode = 0;
         private String mBodyType;
 
@@ -188,7 +205,6 @@ public class LoadMore {
         public LoadMoreParser(InputStream in, Message msg)
                 throws IOException {
             super(in);
-            mMessage = msg;
         }
 
         public int getStatusCode() {
@@ -206,6 +222,7 @@ public class LoadMore {
                 mMessage.mHtml = newContent;
             }
             ContentValues cv = new ContentValues();
+            cv.put(BodyColumns.MESSAGE_KEY, mMessage.mId);
             if (mBodyType.equals(Eas.BODY_PREFERENCE_HTML)) {
                 cv.put(BodyColumns.HTML_CONTENT, mMessage.mHtml);
             } else {
@@ -227,7 +244,7 @@ public class LoadMore {
         public void parseBody() throws IOException {
             mBodyType = Eas.BODY_PREFERENCE_TEXT;
             String body = "";
-            while (nextTag(Tags.EMAIL_BODY) != END) {
+            while (nextTag(Tags.BASE_BODY) != END) {
                 switch (tag) {
                     case Tags.BASE_TYPE:
                         mBodyType = getValue();
