@@ -1,7 +1,6 @@
 package com.android.exchange.adapter;
 
 import android.content.ContentProviderOperation;
-import android.content.ContentProviderResult;
 import android.content.ContentResolver;
 import android.content.ContentUris;
 import android.content.ContentValues;
@@ -34,8 +33,6 @@ import com.android.emailcommon.provider.Mailbox;
 import com.android.emailcommon.provider.Policy;
 import com.android.emailcommon.provider.ProviderUnavailableException;
 import com.android.emailcommon.provider.EmailContent.Attachment;
-import com.android.emailcommon.provider.EmailContent.Body;
-import com.android.emailcommon.provider.EmailContent.BodyColumns;
 import com.android.emailcommon.provider.EmailContent.Message;
 import com.android.emailcommon.utility.AttachmentUtilities;
 import com.android.emailcommon.utility.ConversionUtilities;
@@ -881,17 +878,12 @@ public class EmailSyncParser extends AbstractSyncParser {
                                 EmailContent.Message.FLAG_LOADED_COMPLETE)
                         .build());
             }
-            // As we need get the new msg's id, so we will force to apply batch for these ops.
-            applyBatchIfNeeded(ops, maxOpsPerBatch, true);
+            applyBatchIfNeeded(ops, maxOpsPerBatch, false);
         }
 
         for (EmailContent.Message msg: newEmails) {
             msg.addSaveOps(ops);
-            // As we need get the new msg's id, so we will force to apply batch for these ops.
-            ContentProviderResult[] res = applyBatchIfNeeded(ops, maxOpsPerBatch, true);
-            // After the message and attachments saved, we need update the message body's
-            // HTML content for the viewable parts.
-            updateBodyForInlineAttachment(ops, res, msg);
+            applyBatchIfNeeded(ops, maxOpsPerBatch, false);
         }
 
         for (Long id : deletedEmails) {
@@ -935,11 +927,9 @@ public class EmailSyncParser extends AbstractSyncParser {
 
     // Check if there at least MAX_OPS_PER_BATCH ops in queue and flush if there are.
     // If force is true, flush regardless of size.
-    private ContentProviderResult[] applyBatchIfNeeded(ArrayList<ContentProviderOperation> ops,
-            int maxOpsPerBatch, boolean force)
-            throws RemoteException, OperationApplicationException {
-        ContentProviderResult[] res = null;
-        if (force || ops.size() >= maxOpsPerBatch) {
+    private void applyBatchIfNeeded(ArrayList<ContentProviderOperation> ops, int maxOpsPerBatch,
+            boolean force) throws RemoteException, OperationApplicationException {
+        if (force ||  ops.size() >= maxOpsPerBatch) {
             // STOPSHIP Remove calculating size of data before ship
             if (LogUtils.isLoggable(TAG, Log.DEBUG)) {
                 final Parcel parcel = Parcel.obtain();
@@ -950,47 +940,8 @@ public class EmailSyncParser extends AbstractSyncParser {
                         ops.size(), parcel.dataSize()));
                 parcel.recycle();
             }
-            res = mContentResolver.applyBatch(EmailContent.AUTHORITY, ops);
+            mContentResolver.applyBatch(EmailContent.AUTHORITY, ops);
             ops.clear();
-        }
-        return res;
-    }
-
-    private void updateBodyForInlineAttachment(ArrayList<ContentProviderOperation> ops,
-            ContentProviderResult[] res, EmailContent.Message msg)
-            throws RemoteException, OperationApplicationException {
-        if (msg == null || msg.mHtml == null || res == null) {
-            // There isn't HTML content, do nothing.
-            return;
-        }
-
-        // Find the message's id.
-        long msgId = -1;
-        try {
-            for (ContentProviderResult result : res) {
-                if (result.uri.getPath().startsWith(EmailContent.Message.CONTENT_URI.getPath())) {
-                    msgId = Long.parseLong(result.uri.getLastPathSegment());
-                    break;
-                }
-            }
-        } catch (NumberFormatException e) {
-            // Meet the format exception.
-            return;
-        } finally {
-            if (msgId < 0) return;
-        }
-
-        // Get the attachments to update the HTML content.
-        String newContent = Message.updateHTMLContentForInlineAtts(mContext, msg.mHtml, msgId);
-        if (newContent != null) {
-            long bodyId = Body.lookupBodyIdWithMessageId(mContext, msgId);
-            ContentValues cv = new ContentValues();
-            cv.put(BodyColumns.HTML_CONTENT, newContent);
-            ops.add(ContentProviderOperation.newUpdate(
-                    ContentUris.withAppendedId(EmailContent.Body.CONTENT_URI, bodyId))
-                    .withValues(cv)
-                    .build());
-            applyBatchIfNeeded(ops, 0, true /* force */);
         }
     }
 }
