@@ -216,11 +216,6 @@ public class EasLoadMore extends EasOperation {
             LogUtils.d(Logging.LOG_TAG, "Fetched message body successfully for " + mMessage.mId);
 
             // update the body data
-            String newContent = Message.updateHTMLContentForInlineAtts(context,
-                    mMessage.mHtml, mMessage.mId);
-            if (newContent != null) {
-                mMessage.mHtml = newContent;
-            }
             ContentValues cv = new ContentValues();
             cv.put(BodyColumns.MESSAGE_KEY, mMessage.mId);
             if (mBodyType.equals(Eas.BODY_PREFERENCE_HTML)) {
