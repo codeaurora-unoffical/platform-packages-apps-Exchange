@@ -34,6 +34,7 @@ import com.android.emailcommon.internet.MimeMessage;
 import com.android.emailcommon.internet.MimeUtility;
 import com.android.emailcommon.mail.MessagingException;
 import com.android.emailcommon.mail.Part;
+import com.android.emailcommon.provider.Account;
 import com.android.emailcommon.provider.Mailbox;
 import com.android.emailcommon.provider.ProviderUnavailableException;
 import com.android.emailcommon.provider.EmailContent.Body;
@@ -67,8 +68,8 @@ public class EasLoadMore extends EasOperation {
 
     private Message mMessage;
 
-    public EasLoadMore(Context context, long accountId, Message msg) {
-        super(context, accountId);
+    public EasLoadMore(final Context context, final Account account, final Message msg) {
+        super(context, account);
         mMessage = msg;
     }
 

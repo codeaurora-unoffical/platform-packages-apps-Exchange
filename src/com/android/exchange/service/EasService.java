@@ -120,7 +120,13 @@ public class EasService extends Service {
                 return;
             }
 
-            final EasLoadMore operation = new EasLoadMore(EasService.this, msg.mAccountKey, msg);
+            Account account = Account.restoreAccountWithId(EasService.this, msg.mAccountKey);
+            if (account == null) {
+                LogUtils.e(Logging.LOG_TAG, "Retrive account faild, accountId:" + msg.mAccountKey);
+                return;
+            }
+
+            final EasLoadMore operation = new EasLoadMore(EasService.this, account, msg);
             doOperation(operation, "IEmailService.loadMore");
         }
 
