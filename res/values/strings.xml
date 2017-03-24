@@ -204,4 +204,7 @@
     <!-- Message displayed when there is no application to handle the settings option. [CHAR LIMIT=NONE] -->
     <string name="email_settings_not_available">Re-enable the Email application to view settings.</string>
 
+    <!-- Message displayed when there is application no exported and no permission to handle to settings option -->
+    <string name="email_settings_not_permission">Email application not exported, no permission to view settings</string>
+
 </resources>

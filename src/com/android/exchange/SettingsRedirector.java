@@ -48,6 +48,10 @@ public class SettingsRedirector extends Activity {
             Toast toast = Toast.makeText(this, R.string.email_settings_not_available,
                     Toast.LENGTH_SHORT);
             toast.show();
+        } catch (SecurityException e) {
+            Toast toast = Toast.makeText(this, R.string.email_settings_not_permission,
+                    Toast.LENGTH_SHORT);
+            toast.show();
         }
         finish();
     }

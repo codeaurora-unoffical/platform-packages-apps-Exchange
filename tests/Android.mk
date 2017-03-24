@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+ifneq ($(TARGET_USES_AOSP),true)
 
 LOCAL_PATH:= $(call my-dir)
 include $(CLEAR_VARS)
@@ -35,3 +36,5 @@ LOCAL_INSTRUMENTATION_FOR := Exchange2
 LOCAL_STATIC_JAVA_LIBRARIES := android-support-test
 
 include $(BUILD_PACKAGE)
+
+endif
